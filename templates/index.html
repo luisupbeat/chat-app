@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <title>Chat WebSocket</title>
+  <style>
+    /* Reset y estilos base */
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #f5f8fa;
+      margin: 0;
+      padding: 20px;
+      display: flex;
+      justify-content: center;
+      height: 100vh;
+    }
+
+    .chat-container {
+      width: 400px;
+      background: #fff;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      border-radius: 10px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    header {
+      background: #4a90e2;
+      color: white;
+      padding: 15px;
+      font-size: 1.25rem;
+      text-align: center;
+    }
+
+    #presence {
+      background: #dff0d8;
+      color: #3c763d;
+      padding: 8px 12px;
+      font-size: 0.9rem;
+      text-align: center;
+      border-bottom: 1px solid #c3e6cb;
+    }
+
+    #messages {
+      flex: 1;
+      padding: 15px;
+      overflow-y: auto;
+      background: #fafafa;
+      border-bottom: 1px solid #ddd;
+    }
+
+    .msg {
+      margin-bottom: 10px;
+      padding: 8px 12px;
+      border-radius: 18px;
+      max-width: 70%;
+      word-wrap: break-word;
+      clear: both;
+      display: flex;
+      align-items: center;
+    }
+
+    /* Diferenciar mensajes del usuario y otros */
+    .msg.from-me {
+      background: #4a90e2;
+      color: white;
+      margin-left: auto;
+      flex-direction: row-reverse;
+      text-align: right;
+    }
+
+    .msg.from-other {
+      background: #e1e1e1;
+      color: #333;
+      margin-right: auto;
+      text-align: left;
+    }
+
+    .hora {
+      font-size: 0.75em;
+      color: #888;
+      margin-left: 5px;
+      margin-right: 5px;
+    }
+
+    .avatar {
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      object-fit: cover;
+      margin-right: 8px;
+    }
+
+    .msg.from-me .avatar {
+      margin-left: 8px;
+      margin-right: 0;
+    }
+
+    .input-area {
+      display: flex;
+      padding: 10px 15px;
+      background: #eee;
+    }
+
+    input[type="text"], button {
+      font-size: 1rem;
+      border-radius: 25px;
+      border: 1px solid #ccc;
+      padding: 10px 15px;
+      outline: none;
+    }
+
+    #username {
+      flex: 1;
+      margin-right: 10px;
+    }
+
+    #btnConnect {
+      background: #4a90e2;
+      color: white;
+      border: none;
+      cursor: pointer;
+      transition: background 0.3s ease;
+    }
+
+    #btnConnect:hover {
+      background: #357ABD;
+    }
+
+    #text {
+      flex: 1;
+      margin-right: 10px;
+      border-radius: 25px 0 0 25px;
+      border-right: none;
+    }
+
+    #btnSend {
+      background: #4a90e2;
+      color: white;
+      border-radius: 0 25px 25px 0;
+      border: none;
+      cursor: pointer;
+      padding: 10px 20px;
+      transition: background 0.3s ease;
+    }
+
+    #btnSend:hover {
+      background: #357ABD;
+    }
+
+    /* Scrollbar personalizado */
+    #messages::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    #messages::-webkit-scrollbar-thumb {
+      background-color: rgba(0,0,0,0.1);
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div class="chat-container">
+    <header>Chat WebSocket</header>
+    <div class="input-area" style="padding:10px 15px; border-bottom: 1px solid #ddd;">
+      <input id="username" type="text" placeholder="Tu nombre" />
+      <button id="btnConnect">Conectar</button>
+    </div>
+    <div id="presence"></div>
+    <div id="messages"></div>
+    <div class="input-area">
+      <input id="text" type="text" placeholder="Escribe un mensaje..." disabled />
+      <button id="btnSend" disabled>Enviar</button>
+    </div>
+  </div>
+
+  <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
+  <script>
+    let socket;
+    const $ = id => document.getElementById(id);
+
+    // Diccionario de avatares por nombre
+    const avatares = {
+      'Luis': 'https://i.pravatar.cc/40?img=1',
+      'Brayan': 'https://i.pravatar.cc/40?img=2',
+      'Ana': 'https://i.pravatar.cc/40?img=3',
+      'Default': 'https://i.pravatar.cc/40?img=4'
+    };
+
+    // Función para obtener la hora actual formateada HH:MM:SS
+    function horaActual() {
+      const ahora = new Date();
+      let h = ahora.getHours().toString().padStart(2, '0');
+      let m = ahora.getMinutes().toString().padStart(2, '0');
+      let s = ahora.getSeconds().toString().padStart(2, '0');
+      return `${h}:${m}:${s}`;
+    }
+
+    $('btnConnect').onclick = () => {
+      const username = $('username').value.trim();
+      if (!username) return alert("Ingresa un nombre");
+
+      // Asignar avatar según nombre o usar Default
+      const avatar = avatares[username] || avatares['Default'];
+
+      socket = io();
+
+      socket.emit('register', { username, avatar });
+
+      // Habilitar input y botón para enviar mensajes
+      $('text').disabled = false;
+      $('btnSend').disabled = false;
+      $('username').disabled = true;
+      $('btnConnect').disabled = true;
+
+      socket.on('message', (m) => {
+        const d = document.createElement('div');
+        d.className = 'msg ' + (m.from === username ? 'from-me' : 'from-other');
+
+        const hora = horaActual();
+
+        d.innerHTML = `
+          <img src="${m.avatar}" alt="avatar" class="avatar" />
+          <strong>${m.from}</strong> <span class="hora">${hora}</span>: ${m.text}
+        `;
+
+        $('messages').appendChild(d);
+        $('messages').scrollTop = $('messages').scrollHeight;
+      });
+
+      socket.on('presence', (status) => {
+        $('presence').textContent = status;
+      });
+    };
+
+    $('btnSend').onclick = () => {
+      const text = $('text').value.trim();
+      if (text && socket) {
+        socket.emit('message', text);
+        $('text').value = '';
+      }
+    };
+
+    // Enviar mensaje con Enter
+    $('text').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        $('btnSend').click();
+      }
+    });
+  </script>
+</body>
+</html>
